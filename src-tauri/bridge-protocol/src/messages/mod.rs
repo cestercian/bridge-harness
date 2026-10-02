@@ -26,6 +26,7 @@ mod approvals;
 mod auth;
 mod automations;
 mod browser;
+mod clones;
 mod common;
 mod completion;
 mod config;
@@ -56,6 +57,7 @@ pub use approvals::*;
 pub use auth::*;
 pub use automations::*;
 pub use browser::*;
+pub use clones::*;
 pub use common::*;
 pub use completion::*;
 pub use config::*;
@@ -214,6 +216,7 @@ typed_methods![
         GetContextBreakdownDigestParams,
         ContextBreakdownDigestResult
     ),
+    (GetContextWindows, GetContextWindowsParams, ContextWindowsResult),
     (ReplaySessionEvents, ReplaySessionEventsParams, ReplaySessionEventsResult),
     (ActivateSessionEntry, ActivateSessionEntryParams, SessionForestSnapshot),
     (CreateChat, CreateChatParams, BridgeState),
@@ -240,6 +243,7 @@ typed_methods![
     ),
     (CompactSession, CompactSessionParams, UnitResult),
     (SearchSessionEntries, SearchSessionEntriesParams, SearchSessionEntriesResult),
+    (SearchChats, SearchChatsParams, SearchChatsResult),
     (ExportSessionTranscript, ExportSessionTranscriptParams, ExportSessionTranscriptResult),
     (InterruptTurn, InterruptTurnParams, UnitResult),
     (RetryWorkerTask, RetryWorkerTaskParams, UnitResult),
@@ -306,6 +310,8 @@ typed_methods![
     (SaveReviewerSettings, SaveReviewerSettingsParams, ReviewerSettingsResult),
     (GetAttributionSettings, _, AttributionSettings),
     (SaveAttributionSettings, SaveAttributionSettingsParams, AttributionSettings),
+    (GetChatSearchSettings, _, ChatSearchSettings),
+    (SaveChatSearchSettings, SaveChatSearchSettingsParams, ChatSearchSettings),
     (ListArchivedChats, ListArchivedChatsParams, ArchivedChatsResult),
     (UnarchiveChat, UnarchiveChatParams, UnitResult),
     // token and cost usage
@@ -383,6 +389,17 @@ typed_methods![
     (BrowserSkills, _, BrowserSkillsResult),
     (ConfigureRemoteBrowser, ConfigureRemoteBrowserParams, UnitResult),
     (StartRemoteBrowser, StartRemoteBrowserParams, _),
+    // browser clones
+    (RequestClone, RequestCloneParams, CloneStateResult),
+    (CloneState, CloneStateParams, CloneStateResult),
+    (TakeoverClone, TakeoverCloneParams, UnitResult),
+    (HandBackClone, HandBackCloneParams, UnitResult),
+    (DestroyClone, DestroyCloneParams, UnitResult),
+    (ResolveCloneRequest, ResolveCloneRequestParams, CloneStateResult),
+    (CloneInput, CloneInputParams, UnitResult),
+    (ReadCloneSettings, _, CloneSettingsSnapshot),
+    (WriteCloneSettings, WriteCloneSettingsParams, CloneSettingsSnapshot),
+    (CloneRequests, _, CloneRequestsResult),
     // marketplace
     // agents — whether an agent's runtime is installed at all
     (ListManagedAgents, _, ManagedAgentList),

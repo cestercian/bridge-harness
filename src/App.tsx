@@ -34,7 +34,9 @@ import { ChatModelControl, modelDisplayName } from "./components/ChatModelContro
 import { carryEffort, supportedEffortLevelsOf } from "./components/effort/effortLevels";
 export { ChatModelControl };
 import { SessionDock, type DockPaneDescriptor } from "./components/SessionDock";
-import { SimpleBrowser } from "./components/SimpleBrowser";
+import { BrowserPane } from "./components/BrowserPane";
+import { CloneRequestInbox } from "./components/CloneRequestInbox";
+import type { CloneSupervision } from "./components/CloneSurface";
 import { sanitizeBrowserSelection, serializeBrowserSelections, type BrowserSelectionContext } from "./browserSelection";
 import { validateBrowserSelectionPage } from "./browserRuntime";
 import { AsideChat } from "./components/AsideChat";
@@ -49,7 +51,7 @@ import { ConnectorPane } from "./components/ConnectorPane";
 import { ConnectorToasts } from "./components/ConnectorToasts";
 import { reduceToasts, type ConnectorToast } from "./connectorSurface";
 import { UpdateToast } from "./components/UpdateToast";
-import { checkForUpdate, installUpdateAndRestart, type UpdateInfo } from "./updater";
+import { checkForUpdate, getUpdateChannel, installUpdateAndRestart, type UpdateInfo } from "./updater";
 import { notifyAttention } from "./attention";
 import { attentionCopy, attentionToastKey } from "./attentionCopy";
 import { diffAttentionEvents } from "./attentionEvents";
@@ -75,7 +77,7 @@ import { overviewUsage } from "./usageOverview";
 import { SteerComposer } from "./components/SteerComposer";
 import { ComposerPill } from "./components/ComposerPill";
 import { SessionModeToggle, sessionModeDescription } from "./components/SessionModeToggle";
-import { activeTurnAction, queuedFollowUps } from "./sessionInput";
+import { queuedFollowUps } from "./sessionInput";
 import { PatchView } from "./components/DiffView";
 import { OrchestratorCreateDialog } from "./components/OrchestratorCreateDialog";
 import { ForkDialog } from "./components/ForkDialog";
@@ -85,14 +87,17 @@ import { MemoryUsedChip } from "./components/MemoryUsedChip";
 import { ModelSetupWizard } from "./components/ModelSetupWizard";
 import { ProviderLoginPane } from "./components/ProviderLoginPane";
 import { ChatUsageDot } from "./components/UsageDot";
+import { ContextRing } from "./components/ContextRing";
+import { ContextLensDialog } from "./components/ContextLensDialog";
 import type { MeterRegistry } from "./types";
-import { formatElapsed, harnessLabel, slashCommandsForHarness, slashOwnershipBadge } from "./utils";
+import { formatElapsed, harnessLabel, modelLabel, slashCommandsForHarness, slashOwnershipBadge } from "./utils";
 import { scheduleSuggestion } from "./suggestionTypeahead";
 import { projectSessionConversation, reduceConversation, undeliveredPending } from "./conversation";
 import { resolveProfileOption } from "./modelProfiles";
 import { readAgentOnboardingComplete, shouldShowAgentOnboarding, writeAgentOnboardingComplete } from "./onboarding";
 import { resolveAsideModel } from "./asideModel";
 import { parseSideChatCommand, quoteSelection } from "./sideChat";
+import { parseFindCommand } from "./chatSearch";
 import { pickGreeting } from "./greetings";
 import { useThemePreference } from "./theme";
 import { recordPlace, type AppPlace, type AppView } from "./navigationHistory";
@@ -224,6 +229,9 @@ function AppContent() {
   });
   const [workBriefingError, setWorkBriefingError] = useState<string>();
   const [navOpen, setNavOpen] = useState(false);
+  // `/find` hands its query to the sidebar search; the nonce repeats a
+  // request for the same words.
+  const [sidebarSearch, setSidebarSearch] = useState<{ query: string; nonce: number }>();
   // Two ways to look at the workspace: the classic single-session view, or the
   // Agent Fleet grid where every live agent is its own window at once.
   const [paradigm, setParadigm] = useState<"single" | "grid">("single");
@@ -725,12 +733,32 @@ function AppContent() {
   const [connectorUnread, setConnectorUnread] = useState(0);
   const [connectorFocus, setConnectorFocus] = useState<string>();
   const connectorAttention = connectorToasts.some(toast => !toast.settled);
+  // The clone surface reports whether it needs the person (waiting_for_you or a
+  // pending approval). Only a mounted surface is polling, so the mark is drawn
+  // only while the pane has been visited: an unmounted surface cannot vouch for
+  // a state it is no longer watching.
+  const [cloneAttention, setCloneAttention] = useState(false);
+  const reportCloneSupervision = useCallback((state: CloneSupervision) => setCloneAttention(state.attention), []);
+  useEffect(() => setCloneAttention(false), [selectedSessionId]);
+  const cloneAlert = cloneAttention;
+  const [cloneFocus, setCloneFocus] = useState<string>();
+  // The composer ring opens the Context lens over the chat it belongs to.
+  // Switching chats closes it, so a stale chat's windows are never shown.
+  const [contextLensFor, setContextLensFor] = useState<string | null>(null);
+  useEffect(() => setContextLensFor(null), [selectedSessionId]);
+  useEffect(() => {
+    if (cloneFocus && selectedSessionId === cloneFocus) {
+      dispatchDock({ type: "open-pane", pane: "browser" });
+      setCloneFocus(undefined);
+    }
+  }, [cloneFocus, selectedSessionId, dispatchDock]);
 
   const dockPanes: DockPaneDescriptor[] = [
     { id: "changes", label: "Changes", icon: FileCode2, available: hasRepo && !!workspace, unavailableReason: "Changes needs a repository. This chat has no worktree to diff.", badge: workspace?.dirtyFiles || undefined },
     { id: "code", label: "Code", icon: Code2, available: hasRepo && !!workspace, unavailableReason: "Code needs a repository. This chat has no worktree to read files from." },
     { id: "terminal", label: "Terminal", icon: TerminalSquare, available: hasRepo && !!workspace, unavailableReason: "The terminal needs a repository. This chat has no worktree to run a shell in.", badge: terminalActivity && terminalActivity.running > 1 ? terminalActivity.running : undefined, alert: terminalActivity?.attention || undefined },
-    { id: "browser", label: "Browser", icon: Monitor, available: true },
+    // One browser: your own pages, and the throwaway copy an agent asks for.
+    { id: "browser", label: "Browser", icon: Monitor, available: true, alert: cloneAlert || undefined },
     { id: "transcript", label: "Transcript", icon: Braces, available: true },
     { id: "tasks", label: "Agents", icon: Activity, available: true, badge: dockTaskBadge.running || undefined, alert: dockTaskBadge.attention || undefined },
     { id: "github", label: "GitHub", icon: GitPullRequest, available: hasRepo && !!workspace, unavailableReason: "GitHub needs a repository. This chat has no worktree with a remote." },
@@ -958,7 +986,12 @@ function AppContent() {
   const [availableUpdate, setAvailableUpdate] = useState<UpdateInfo>();
   useEffect(() => {
     let active = true;
-    const check = () => { void checkForUpdate().then(update => { if (active && update) setAvailableUpdate(update); }).catch(() => undefined); };
+    const check = () => {
+      const channel = getUpdateChannel();
+      void checkForUpdate(channel).then(update => {
+        if (active && getUpdateChannel() === channel) setAvailableUpdate(update ?? undefined);
+      }).catch(() => undefined);
+    };
     check();
     const timer = window.setInterval(check, 6 * 60 * 60 * 1000);
     return () => { active = false; window.clearInterval(timer); };
@@ -1112,13 +1145,9 @@ function AppContent() {
     () => state.events.filter(event => event.kind === "approval.auto_allowed"),
     [state.events],
   );
-  // What the submit affordance does while this session is working. Read from the
-  // harness's advertised capabilities: a provider that cannot take input
-  // mid-turn gets its follow-up queued, and the button says Queue, not Steer.
-  const activeAction = useMemo(
-    () => activeTurnAction(adapters.find(adapter => adapter.id === session?.harness)?.capabilities),
-    [adapters, session?.harness],
-  );
+  // Sending mid-turn stops the turn and runs the message instead, on every
+  // harness, so the button always says Steer.
+  const activeAction = "steer" as const;
   // Folded from the durable event feed, so a reconnect reports the same waiting
   // follow-ups the composer showed before it.
   const queuedFollowUpCount = useMemo(
@@ -2197,6 +2226,17 @@ function AppContent() {
       return;
     }
     if (!submittedText && sentAttachments.length === 0) return;
+    // `/find` searches every chat from the sidebar. It is never a turn: the
+    // words go to the search field, which runs the deep stage, and nothing
+    // is written to the open chat.
+    const find = parseFindCommand(submittedText);
+    if (find !== null) {
+      setSidebarCollapsed(false);
+      setNavOpen(true);
+      setSidebarSearch(current => ({ query: find, nonce: (current?.nonce ?? 0) + 1 }));
+      setComposer("");
+      return;
+    }
     // `/btw` and `/side` are Bridge's side-chat commands, not turns for the
     // open chat: the question opens beside this conversation with its context,
     // and the chat underneath is untouched. Images on the composer ride along
@@ -2663,6 +2703,7 @@ function AppContent() {
   const chromeFullscreen = fullscreen || flushWindow;
   const startupError = error ?? (healthError ? errorMessage(healthError) : modelSetupError ? errorMessage(modelSetupError) : undefined);
   const codexUpdateOverlays = <>
+    <CloneRequestInbox sessionLabels={Object.fromEntries(state.sessions.map(item => [item.id, item.label]))} onOpen={id => { openSession(id); setCloneFocus(id); }} onError={setError} />
     {!error && codexUpdateSuccess && <TransientAlert title="Codex updated" message="Bridge refreshed the Codex runtime." variant="success" onDismiss={() => setCodexUpdateSuccess(false)} />}
     {!error && !codexUpdateSuccess && codexUpdateNotice && latestCodex && codexVersion && <TransientAlert
       title="Codex update available"
@@ -2700,10 +2741,16 @@ function AppContent() {
     }
   };
   const accessControl = <AccessControl policy={permissionPolicy} onChange={mode => void changeAccessMode(mode)} />;
-  // The usage dot beside the composer reads the same provider overviews the
-  // menu-bar meter does, so the health it reports is next to the box that
-  // spends it and never disagrees with the status item.
-  const usageDot = <ChatUsageDot adapters={health?.adapters} onOpenUsage={() => setView("usage")} onSignIn={provider => setLoginProvider(provider)} />;
+  // Account quota lives in the sidebar rail, reading the same provider
+  // overviews the menu-bar meter does. The composer shows the model's own
+  // context window instead: the two are different things.
+  const usageDot = <ChatUsageDot rail adapters={health?.adapters} onOpenUsage={() => setView("usage")} onSignIn={provider => setLoginProvider(provider)} />;
+  const contextRing = session ? <ContextRing
+    percent={session.contextPercent}
+    model={session.model ? modelLabel(session.model) : null}
+    active={contextLensFor === session.id}
+    onOpen={() => setContextLensFor(session.id)}
+  /> : null;
   // With the rail hidden there is no sidebar header to hold them, so the panel
   // toggle and the history chevrons move onto whichever chrome row is mounted.
   // They are the only pointer route back to the sidebar; the keymap keeps ⌘B.
@@ -2742,8 +2789,10 @@ function AppContent() {
       onOpenMemory={() => setView("memory")}
       onOpenUsage={() => setView("usage")}
       onOpenGitplace={() => setView("gitplace")}
+      railTrailing={usageDot}
       onOpenSettings={() => setView("settings")}
       onOpenSession={openSession}
+      searchRequest={sidebarSearch}
       onArchiveChat={archiveChat}
       // Only while a chat is open: the Welcome screen owns its own draft, so
       // a mention there would land in a composer nobody can see.
@@ -2818,7 +2867,7 @@ function AppContent() {
         projects={state.projects}
         onJumpToFile={jumpFromGitplace}
         onAddProject={() => setNewProjectOpen(true)}
-      /> : view === "settings" ? <Suspense fallback={<PanelLoading label="Opening settings…"/>}><SettingsScreen onOpenWorkBoard={openWorkBoard} adapters={adapters} autoApprovals={autoApprovals} initialSection={settingsSection} onModelSetupChange={acceptModelSetup} onSuggestionSettingsChange={setSuggestionSettings} onHealthChange={invalidateHealth} onUpdate={setAvailableUpdate} onError={setError} /></Suspense> : view === "agent-fleet" ? <Suspense fallback={<PanelLoading label="Opening Agent Fleet…"/>}><AgentFleet
+      /> : view === "settings" ? <Suspense fallback={<PanelLoading label="Opening settings…"/>}><SettingsScreen onOpenWorkBoard={openWorkBoard} adapters={adapters} autoApprovals={autoApprovals} initialSection={settingsSection} onModelSetupChange={acceptModelSetup} onSuggestionSettingsChange={setSuggestionSettings} onHealthChange={invalidateHealth} availableUpdate={availableUpdate} onUpdate={setAvailableUpdate} onError={setError} /></Suspense> : view === "agent-fleet" ? <Suspense fallback={<PanelLoading label="Opening Agent Fleet…"/>}><AgentFleet
         workspaces={state.workspaces}
         initialWorkspaceId={workspace?.id ?? welcomeWorkspaceId}
         onOpenProjects={() => setView("projects")}
@@ -2831,6 +2880,7 @@ function AppContent() {
         activeSessionId={session?.id}
         onFocusSession={openSession}
         onStopWorker={stopWorker}
+        onNewChat={workspaceId => void startChatInWorkspace(workspaceId)}
       /></Suspense> : session ? <>
         <SessionToolbar
           title={chatName(session)}
@@ -3037,7 +3087,7 @@ function AppContent() {
                     the orchestrator is told so it does not fight the change. */}
                 {isWorkerView ? <div className="mx-auto max-w-conversation px-4 sm:px-6">
                   <div className="u-glass-soft flex items-center gap-2.5 rounded-2xl px-4 py-2.5 text-[12px] text-muted-foreground"><Bot size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span>This is a background worker. It takes its objective from its orchestrator — steer it here to amend that objective.</span></div>
-                  <SteerComposer sessionId={session.id} steerable={!!workerSteerable} onSteer={steerWorker} className="pt-2" trailing={usageDot}/>
+                  <SteerComposer sessionId={session.id} steerable={!!workerSteerable} onSteer={steerWorker} className="pt-2" trailing={contextRing}/>
                 </div> : <div className="relative mx-auto max-w-conversation-frame">
                   {!slashOpen && !mentionOpen && !agentShortcutOpen && !harnessShortcutOpen && skillSuggestions.length > 0 && <div className="u-glass-popover absolute bottom-full left-4 right-4 z-20 mb-2 overflow-hidden rounded-2xl sm:left-6 sm:right-6"><div className="border-b border-border px-3 py-1.5 text-[9px] uppercase tracking-[0.12em] text-muted-foreground/70">Available skills for this task</div>{skillSuggestions.map(suggestion => <button key={suggestion.id} type="button" onMouseDown={event => { event.preventDefault(); setComposer(current => `/${suggestion.command} ${current}`); setSkillSuggestions([]); }} className="flex w-full items-start gap-3 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-accent"><span className="mt-0.5 rounded border border-success/25 bg-success/10 px-1.5 py-0.5 text-[8.5px] uppercase text-success">installed</span><span className="min-w-0 flex-1"><b className="block truncate text-[11px] font-medium text-foreground">{suggestion.name}</b><small className="mt-0.5 block text-[9.5px] leading-4 text-muted-foreground">{suggestion.relevance} · {suggestion.source} · {suggestion.risk} risk · {suggestion.permissions.join(", ")}</small></span></button>)}</div>}
                   {agentShortcutOpen && <div id="agent-shortcut-listbox" role="listbox" aria-label="Specialist agents" className="u-glass-popover absolute left-4 right-4 sm:left-6 sm:right-6 bottom-full mb-2 z-20 rounded-2xl overflow-hidden flex flex-col max-h-[min(420px,55vh)]">
@@ -3128,7 +3178,7 @@ function AppContent() {
                     agentsWorking={chatAgents.length > 0}
                     onStop={session ? stopChat : undefined}
                     inputRef={composerRef}
-                    leading={usageDot}
+                    leading={contextRing}
                     modelControl={session.kind === "direct" || session.kind === "orchestrator"
                       ? <ChatModelControl adapters={adapters} harness={session.harness} model={session.model ?? null} disabled={busy || turnActive} disabledReason={turnActive ? "Wait for the current response before switching models" : undefined} onChange={(harness, model) => void changeChatModel(harness, model)} compact roleLabel={session.kind === "orchestrator" ? "Orchestrator" : "Chat"} effort={session.effort} onEffortChange={effort => void changeChatEffort(effort)} onRefresh={async () => { await bridgeApi.refreshModelCatalogs(); await invalidateHealth(); }} />
                       : <span className="inline-flex items-center gap-1 h-8 px-2.5 text-foreground/75 text-[13px] rounded-full">{harnessLabel(session.harness)}</span>}
@@ -3182,10 +3232,13 @@ function AppContent() {
                 onStopWorker={stopWorker}
                 onOpenTerminal={() => dispatchDock({ type: "open-pane", pane: "terminal" })}
               />;
-              if (pane === "browser") return <SimpleBrowser
+              if (pane === "browser") return <BrowserPane
                 key={session.id}
                 sessionId={session.id}
-                visible={dock.open && dock.pane === "browser" && !fullscreen && !modal && !loginProvider && !newProjectOpen && !forkDraft && !shortcutsOpen && !githubLinkChoice && !recallOpen && !navOpen}
+                agentLabel={harnessLabel(session.harness)}
+                onSupervisionChange={reportCloneSupervision}
+                onError={setError}
+                visible={dock.open && dock.pane === "browser" && !fullscreen && !modal && !loginProvider && !newProjectOpen && !forkDraft && !shortcutsOpen && !contextLensFor && !githubLinkChoice && !recallOpen && !navOpen}
                 onAttachSelection={attachBrowserSelection}
                 onInvalidateSelection={(tabId, navigationId) => invalidateBrowserSelection(session.id, tabId, navigationId)}
               />;
@@ -3322,6 +3375,7 @@ function AppContent() {
     </div>
     {availableUpdate && (
       <UpdateToast
+        key={`${availableUpdate.channel}:${availableUpdate.version}`}
         update={availableUpdate}
         onInstall={installUpdateAndRestart}
         onDismiss={() => setAvailableUpdate(undefined)}
@@ -3364,6 +3418,7 @@ function AppContent() {
       onClose={() => { if (!forkBusy) { setForkDraft(null); setForkError(null); } }}
     />
     <ShortcutsSheet open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+    {session && <ContextLensDialog open={contextLensFor === session.id} sessionId={session.id} refreshKey={session.contextPercent} onClose={() => setContextLensFor(null)} onCompact={async id => { await bridgeApi.submitInput(id, "/compact"); }} />}
   </div>;
 }
 

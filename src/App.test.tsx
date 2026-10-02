@@ -36,6 +36,12 @@ import type { AdapterDescriptor } from "./types";
 import { bridgeApi } from "./api";
 import { SHORTCUTS } from "./keymap";
 
+// jsdom has no Web Animations API; Base UI's dialog asks for running
+// animations when it closes.
+if (typeof Element !== "undefined" && !Element.prototype.getAnimations) {
+  Element.prototype.getAnimations = () => [];
+}
+
 const adapters: AdapterDescriptor[] = [
   {
     id: "codex", label: "Codex", available: true, authState: "signed_in", version: "test", capabilities: [], unavailableReason: null,
@@ -515,6 +521,57 @@ describe("the dock in the session view", () => {
     expect(dockAside()!.querySelector('[aria-label="Browser pages"]')).not.toBeNull();
   });
 
+  // Contract: testing/feat-unify-browser-pane.md §2.
+  it("shows a requested clone inside the one Browser pane and keeps it across pane switches", async () => {
+    await mountApp();
+    await openWorkspaceSession("4 files");
+    await click(container.querySelector('button[aria-label="Session actions"]')!);
+    const item = [...document.querySelectorAll('[role="menu"] [role="menuitemcheckbox"]')].find(node => node.textContent?.startsWith("Browser"))!;
+    await click(item);
+    await settle(2);
+
+    const browserTab = [...container.querySelectorAll('[role="tab"]')].find(tab => tab.getAttribute("aria-label") === "Browser")!;
+    expect(browserTab.getAttribute("aria-selected")).toBe("true");
+    const surface = () => dockAside()!.querySelector("[data-clone-viewport]");
+    const before = surface();
+    expect(before).not.toBeNull();
+
+    await key({ ...chord, code: "Digit1", key: "1" });
+    expect(surface()).toBe(before);
+    expect(before!.closest(".hidden")).not.toBeNull();
+    await key({ ...chord, code: "Digit4", key: "4" });
+    expect(surface()).toBe(before);
+    expect(before!.closest(".hidden")).toBeNull();
+  });
+
+  it("gives direct chats the same Browser pane, clone included", async () => {
+    await mountApp();
+    await act(async () => {
+      await bridgeApi.createChat("codex", null, "Browser scratch");
+    });
+    await settle();
+    await click(chatRows().find(row => row.title.includes("Browser scratch"))!);
+    await key({ ...chord, code: "Digit4", key: "4" });
+    await settle(2);
+    expect(dockAside()!.textContent).not.toContain("needs a repository");
+    expect(dockAside()!.querySelector("[data-clone-viewport]")).not.toBeNull();
+  });
+
+  it("shows the attention dot on the Browser tab once it is opened, while another pane is active", async () => {
+    await mountApp();
+    await openWorkspaceSession("4 files");
+    await click(dockToggle()!);
+    // A pane that was never opened is not polling, so it cannot claim attention.
+    expect(container.querySelector('[data-testid="dock-alert-browser"]')).toBeNull();
+
+    await key({ ...chord, code: "Digit4", key: "4" });
+    await settle(3);
+    await key({ ...chord, code: "Digit1", key: "1" });
+    // The mock clone starts on a login wall, i.e. waiting_for_you.
+    expect(container.querySelector('[data-testid="dock-alert-browser"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="dock-alert-overflow"]')).not.toBeNull();
+  });
+
   // Contract: testing/feat-dock-terminal.md §4.
   it("opens the multi-shell terminal pane on the third chord", async () => {
     await mountApp();
@@ -553,7 +610,7 @@ describe("the dock in the session view", () => {
     expect(agentsTab.textContent).toContain("1");
   });
 
-  it("mounts the usage dot beside a worker's steer composer", async () => {
+  it("mounts the context ring beside a worker's steer composer", async () => {
     await mountApp();
     await openWorkspaceSession("4 files");
     await click(dockToggle()!);
@@ -567,7 +624,7 @@ describe("the dock in the session view", () => {
 
     expect(container.querySelector("h1")!.textContent).toContain("Implementation");
     expect(container.textContent).toContain("This is a background worker");
-    expect(container.querySelector('[aria-label^="Open usage"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label^="Context window"]')).not.toBeNull();
   });
 
   it("keeps the usage dot out of the title bar", async () => {
@@ -576,12 +633,30 @@ describe("the dock in the session view", () => {
     expect(container.querySelector('header [aria-label^="Open usage"]')).toBeNull();
   });
 
-  it("mounts the usage dot at the chat composer's leading edge", async () => {
+  it("puts the context ring in the composer and the usage dot in the sidebar rail", async () => {
     await mountApp();
     await openWorkspaceSession("4 files");
-    const dot = container.querySelector<HTMLButtonElement>('[data-composer-frame] [aria-label^="Open usage"]');
+    const ring = container.querySelector<HTMLButtonElement>('[data-composer-frame] [aria-label^="Context window"]');
+    expect(ring).not.toBeNull();
+    expect(container.querySelector('[data-composer-frame] [aria-label^="Open usage"]')).toBeNull();
+    const dot = container.querySelector<HTMLButtonElement>('[aria-label^="Open usage"]');
     expect(dot).not.toBeNull();
     expect(dot!.getAttribute("aria-controls")).toBe("usage-dot-panel");
+    expect(dot!.closest("[data-composer-frame]")).toBeNull();
+  });
+
+  it("opens the Context lens as a modal from the composer ring, not in the dock", async () => {
+    await mountApp();
+    await openWorkspaceSession("4 files");
+    await click(container.querySelector<HTMLButtonElement>('[data-composer-frame] [aria-label^="Context window"]')!);
+    await settle(3);
+    const lens = document.body.querySelector<HTMLElement>('[role="dialog"][aria-label="Context lens"]');
+    expect(lens).not.toBeNull();
+    expect(lens!.querySelector('[aria-label="Context pressure"]')).not.toBeNull();
+    expect([...container.querySelectorAll('[role="tab"]')].find(tab => tab.getAttribute("aria-label") === "Context")).toBeUndefined();
+    await click(lens!.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!);
+    await settle(3);
+    expect(document.body.querySelector('[role="dialog"][aria-label="Context lens"]')).toBeNull();
   });
 
   it("lets Escape restore an expanded pane before it leaves fullscreen", async () => {

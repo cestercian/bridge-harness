@@ -91,6 +91,7 @@ methods![
     (GetSessionForestDigest, "sessions", "get_session_forest_digest"),
     (GetContextBreakdown, "sessions", "get_context_breakdown"),
     (GetContextBreakdownDigest, "sessions", "get_context_breakdown_digest"),
+    (GetContextWindows, "sessions", "get_context_windows"),
     (ReplaySessionEvents, "sessions", "replay_session_events"),
     (ActivateSessionEntry, "sessions", "activate_session_entry"),
     (CreateChat, "sessions", "create_chat"),
@@ -109,6 +110,7 @@ methods![
     (DispatchAgentShortcut, "sessions", "dispatch_agent_shortcut"),
     (CompactSession, "sessions", "compact_session"),
     (SearchSessionEntries, "sessions", "search_session_entries"),
+    (SearchChats, "sessions", "search_chats"),
     (ExportSessionTranscript, "sessions", "export_session_transcript"),
     (InterruptTurn, "sessions", "interrupt_turn"),
     (RetryWorkerTask, "sessions", "retry_worker_task"),
@@ -121,6 +123,8 @@ methods![
     (SaveReviewerSettings, "config", "save_reviewer_settings"),
     (GetAttributionSettings, "config", "get_attribution_settings"),
     (SaveAttributionSettings, "config", "save_attribution_settings"),
+    (GetChatSearchSettings, "config", "get_chat_search_settings"),
+    (SaveChatSearchSettings, "config", "save_chat_search_settings"),
     (ListArchivedChats, "sessions", "list_archived_chats"),
     (UnarchiveChat, "sessions", "unarchive_chat"),
     // memory — explicit named-scope pins; not recall, not the router
@@ -259,6 +263,17 @@ methods![
     (BrowserSkills, "browser", "browser_skills"),
     (ConfigureRemoteBrowser, "browser", "configure_remote_browser"),
     (StartRemoteBrowser, "browser", "start_remote_browser"),
+    // browser clones — throwaway signed-in browsers an agent drives
+    (RequestClone, "clones", "request_clone"),
+    (CloneState, "clones", "clone_state"),
+    (TakeoverClone, "clones", "takeover_clone"),
+    (HandBackClone, "clones", "hand_back_clone"),
+    (DestroyClone, "clones", "destroy_clone"),
+    (ResolveCloneRequest, "clones", "resolve_clone_request"),
+    (CloneInput, "clones", "clone_input"),
+    (ReadCloneSettings, "clones", "read_clone_settings"),
+    (WriteCloneSettings, "clones", "write_clone_settings"),
+    (CloneRequests, "clones", "clone_requests"),
     // agents — the runtime lifecycle for the built-in integrations. Distinct
     // from `marketplace`, which is about plugins running inside an agent.
     (ListManagedAgents, "agents", "list_managed_agents"),

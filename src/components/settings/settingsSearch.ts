@@ -38,6 +38,7 @@ export const STATIC_SETTINGS_ROWS: SearchableRow[] = [
   { section: "appearance", label: "Shell", description: "Solid or Cursor translucency" },
   { section: "appearance", label: "Thinking control", description: "Slider, Sentence, or List effort picker" },
   { section: "appearance", label: "Show thinking", description: "Draw or hide the model's reasoning text in the transcript" },
+  { section: "appearance", label: "Open edit activity automatically", description: "Open short Activity sections with file diffs in the transcript" },
 
   { section: "permissions", label: "Auto-approve provider permissions", description: "Accept provider permission requests automatically" },
   { section: "permissions", label: "Worker write scope", description: "Always asks, whatever the switch says" },
@@ -46,6 +47,8 @@ export const STATIC_SETTINGS_ROWS: SearchableRow[] = [
 
   { section: "composer", label: "Inline suggestions", description: "Ghost-text continuations of your draft, accepted with Tab" },
   { section: "composer", label: "Suggestion model", description: "Which model writes the inline continuation" },
+  { section: "composer", label: "Search deeper", description: "Let chat search ask a small model when the index is unsure" },
+  { section: "composer", label: "Search model", description: "Which Claude model chat search uses" },
 
   { section: "agents", label: "New preset", description: "Create an agent preset" },
 
@@ -60,6 +63,9 @@ export const STATIC_SETTINGS_ROWS: SearchableRow[] = [
 
   { section: "harnesses", label: "Installed", description: "Runtimes Bridge can start right now" },
   { section: "harnesses", label: "Available", description: "Runtimes Bridge can install for you" },
+
+  { section: "clones", label: "Default sign-in path", description: "Import cookies from your browser, or sign in inside a new browser clone" },
+  { section: "clones", label: "Time to live", description: "How long a browser clone lives before it destroys itself" },
 
   { section: "work", label: "Integration briefing", description: "Slack, GitHub, and other integration activity from the past 24 hours" },
   { section: "work", label: "What it reads", description: "Which connected tools the briefing may read" },

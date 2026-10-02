@@ -7,14 +7,16 @@ import { MENU_COMMAND_EVENT, type CommandId } from "./keymap";
 import { normalizeAgentToken } from "./agentMention";
 import { createInvokeQueue } from "./invokeQueue";
 import { asWireKind, readWireKind } from "./transcript/wire";
-import type { AgentDefinition, ArchiveChatResult, AgentEvent, ApprovalDecision, AutomationAction, AutomationActionResult, AutomationCatalog, AutomationProvider, BaseBranchDivergence, BridgeState, BrowserActionRequest, BrowserBridgeSnapshot, BrowserFrame, BrowserRouteDecision, BrowserRouteRequest, BrowserSkill, CapabilitySuggestion, CompletionCheckRun, CompletionSummary, ConfigState, CompiledPromptPreviewResult, ExternalLearningTriggerKind, PermissionPolicy, Harness, HarnessConfig, Health, LearningRun, LearningSchedule, LearningState, ListMemoryRecordsResult, LocalLearningTriggerKind, MarketplaceAction, MarketplaceActionResult, MarketplaceAppAuthState, MarketplaceCatalog, MarketplaceProvider, MemoryCapabilities, MemoryChangedPayload, MemoryExtractionSettings, MemoryInjectionSettings, MemoryPacketAudit, MemoryRecord, ModelProfileDraft, ModelSetupState, OpenCodeCatalog, PromptProviderLayerStatus, PromptRevisionView, PromptSectionMutationResult, PromptSectionStatePayload, PromptStackView, PromptTargetChoice, RemoteBrowserConfig, RouterPreferences, SanitizedTurn, ExportSessionTranscriptResult, TranscriptExportScope, SearchSessionEntriesResult, SessionEntry, SessionStartupPayload, TerminalExit, SessionForestSnapshot, SkillAction, SkillActionResult, SkillCatalog, SkillPreview, SkillProvider, SlashCommand, SlashCommandResolve, TerminalChunk, VerifierCandidate, VerifierManifest, WorkerRepositoryBinding, WorktreeInventoryEntry, WorktreeReclaimResult, WorktreeSweepResult, WorktreeUsage, WorkspaceSessionKind } from "./types";
+import type { AgentDefinition, ArchiveChatResult, AgentEvent, ApprovalDecision, AutomationAction, AutomationActionResult, AutomationCatalog, AutomationProvider, BaseBranchDivergence, BridgeState, BrowserActionRequest, BrowserBridgeSnapshot, BrowserCloneSnapshot, BrowserFrame, BrowserRouteDecision, BrowserRouteRequest, BrowserSkill, CapabilitySuggestion, CompletionCheckRun, CompletionSummary, ConfigState, CompiledPromptPreviewResult, ExternalLearningTriggerKind, PermissionPolicy, Harness, HarnessConfig, Health, LearningRun, LearningSchedule, LearningState, ListMemoryRecordsResult, LocalLearningTriggerKind, MarketplaceAction, MarketplaceActionResult, MarketplaceAppAuthState, MarketplaceCatalog, MarketplaceProvider, MemoryCapabilities, MemoryChangedPayload, MemoryExtractionSettings, MemoryInjectionSettings, MemoryPacketAudit, MemoryRecord, ModelProfileDraft, ModelSetupState, OpenCodeCatalog, PromptProviderLayerStatus, PromptRevisionView, PromptSectionMutationResult, PromptSectionStatePayload, PromptStackView, PromptTargetChoice, RemoteBrowserConfig, RouterPreferences, SanitizedTurn, ExportSessionTranscriptResult, TranscriptExportScope, SearchSessionEntriesResult, SessionEntry, SessionStartupPayload, TerminalExit, SessionForestSnapshot, SkillAction, SkillActionResult, SkillCatalog, SkillPreview, SkillProvider, SlashCommand, SlashCommandResolve, TerminalChunk, VerifierCandidate, VerifierManifest, WorkerRepositoryBinding, WorktreeInventoryEntry, WorktreeReclaimResult, WorktreeSweepResult, WorktreeUsage, WorkspaceSessionKind } from "./types";
 import type { AutomationSaveResult, SaveAutomationParams } from "./types";
+import type { CloneSettings, CloneSettingsSnapshot, CloneSignInPath, BrowserCloneStatus } from "./types";
 import type { ScanHistoryParams, ScanHistoryResult, SetPriceOverrideParams, SummaryParams, UsageBucket, UsageHistorySource, UsagePriceOverride, UsagePricingStatus, UsageSummaryResult } from "./types";
 import type { MeterRegistry, InsightsParams, UsageInsightsResult } from "./types";
 import type { MemoryRecallStats, MemoryConsolidationEntry } from "./types";
 import { deriveRecallStats, PACKET_BUDGET_CHARS, type PacketInjection } from "./memoryStats";
-import { BRIDGE_METHODS, type BridgeMethod, type BridgeMethodParams, type BridgeMethodResults, type BridgeNotification, type ContextBreakdownResult, type ForkSessionResult, type ResolveReferenceResult } from "./protocol/generated/protocol";
-import type { TurnImage, ArchivedChatsResult, AttributionSettings, ReviewerSettings, ReviewerSettingsResult, WorkerSettings } from "./protocol/generated/protocol";
+import { BRIDGE_METHODS, type BridgeMethod, type BridgeMethodParams, type BridgeMethodResults, type BridgeNotification, type ContextBreakdownResult, type ContextWindow, type ContextWindowsResult, type ForkSessionResult, type ResolveReferenceResult } from "./protocol/generated/protocol";
+import type { TurnImage, ArchivedChatsResult, AttributionSettings, ChatSearchHit, ChatSearchSettings, ReviewerSettings, ReviewerSettingsResult, SearchChatsResult, WorkerSettings } from "./protocol/generated/protocol";
+import type { CloneSnapshot as WireCloneSnapshot, CloneBrowserKind, CloneInputEvent } from "./protocol/generated/protocol";
 import type {
   CommitExternalImportParams,
   DiscoverExternalImportParams,
@@ -384,6 +386,57 @@ let mockBrowserBridge: BrowserBridgeSnapshot = {
   tokenAccounting: { snapshots: 0, fullSnapshots: 0, deltaSnapshots: 0, serializedBytes: 0, estimatedInputTokens: 0, screenshotCount: 0 },
   promptInjectionSignals: [], pendingApproval: null, audit: [], debugEvents: [], siteMetrics: [], remoteProvider: null,
 };
+
+// ── Browser clones: MOCK ONLY ────────────────────────────────────────────────
+// No wire method exposes clones yet. The dock surface ships first, against this
+// in-memory fixture; the protocol method and live-turn capability injection are
+// a follow-up. Nothing here reaches Tauri: outside the desktop app the surface
+// runs on this fixture, and inside it every read says "no clone" and every
+// action refuses, so a shipped build never draws an invented clone. A wireframe
+// stands in for the live frame, so the mock carries no page content.
+const mockCloneFrame = (domain: string) => `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400"><rect width="640" height="400" fill="rgb(245,245,244)"/><rect x="200" y="70" width="240" height="250" rx="12" fill="rgb(255,255,255)" stroke="rgb(214,211,209)"/><text x="320" y="112" text-anchor="middle" font-family="sans-serif" font-size="16" fill="rgb(68,64,60)">Sign in to ${domain}</text><rect x="224" y="136" width="192" height="32" rx="6" fill="rgb(245,245,244)"/><rect x="224" y="182" width="192" height="32" rx="6" fill="rgb(245,245,244)"/><rect x="224" y="240" width="192" height="32" rx="6" fill="rgb(68,64,60)"/></svg>`,
+)}`;
+const noClone = (status: BrowserCloneSnapshot["status"] = "none"): BrowserCloneSnapshot => ({
+  status, cloneId: null, domain: null, signInPath: null, pendingRequest: null, waitingReason: null, expiresAt: null,
+  screenshot: null, screenshotRedactedRegions: 0, pendingApproval: null,
+});
+const defaultCloneSettings = (): CloneSettings => ({ defaultSignInPath: "import", ttlMinutes: 30, agentVision: true });
+const cloneUnavailable = () => new Error("Browser clones are not connected to the runtime in this build yet.");
+// The runtime's CloneSnapshot carries no cookie value; map it to what the dock
+// surface renders. `null` (no clone for this session) becomes the empty state.
+const cloneSnapshotFromWire = (wire: WireCloneSnapshot | null): BrowserCloneSnapshot => {
+  if (!wire) return noClone();
+  return {
+    status: wire.status as BrowserCloneStatus,
+    pendingRequest: wire.pendingRequest ?? null,
+    pendingRequestId: wire.pendingRequestId ?? null,
+    extensionPath: wire.extensionPath ?? null,
+    additionalDomains: wire.additionalDomains ?? null,
+    cloneId: wire.cloneId,
+    domain: wire.domain,
+    signInPath: wire.signInPath,
+    waitingReason: wire.status === "waiting_for_you"
+      ? "Sign in and finish two-factor, then hand the clone back."
+      : null,
+    expiresAt: new Date(Date.now() + wire.minutesLeft * 60_000).toISOString(),
+    screenshot: wire.screenshot ?? null,
+    screenshotRedactedRegions: wire.screenshotRedactedRegions,
+    pendingApproval: null,
+    agentVision: wire.agentVision ?? undefined,
+    agentPointer: wire.agentPointer ? { x: wire.agentPointer.x, y: wire.agentPointer.y, action: wire.agentPointer.action, at: Date.now() - wire.agentPointer.ageMs } : null,
+  };
+};
+// Starts on a login wall, the state a clone spends its interesting time in, so
+// the surface's whole supervision loop (take over, hand back, destroy) is
+// exercisable without the desktop app.
+let mockBrowserClone: BrowserCloneSnapshot = {
+  status: "waiting_for_you", cloneId: "mock-clone-1", domain: "example.com", signInPath: "sign_in_inside",
+  waitingReason: "Sign in and finish two-factor, then hand the clone back.",
+  expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+  screenshot: mockCloneFrame("example.com"), screenshotRedactedRegions: 2, pendingRequest: null, pendingApproval: null,
+};
+let mockCloneSettings: CloneSettings = defaultCloneSettings();
 
 let mockState: BridgeState & { agentEvents: AgentEvent[] } = {
   projects: [{ id: "demo-project", name: "Bridge", path: "/Users/you/Developer/bridge", createdAt: now }],
@@ -768,6 +821,126 @@ function mockForest(sessionId: string): SessionForestSnapshot {
   mockForests[sessionId] = created;
   return structuredClone(created);
 }
+let mockChatSearchSettings: ChatSearchSettings = { deepSearch: true, model: null };
+
+/**
+ * The mock funnel: every word must appear in a top-level demo chat's title,
+ * workspace, or messages. Good enough for `bun run dev` to exercise both the
+ * index-only card list and the "searching deeper" state.
+ */
+async function mockSearchChats(query: string, options: { limit?: number; deep?: boolean }): Promise<SearchChatsResult> {
+  const terms = query.toLowerCase().split(/[^a-z0-9]+/).filter(term => term.length > 1);
+  const limit = options.limit ?? 4;
+  const base = { query: query.trim(), terms, elapsedMs: 3, modelTokens: 0, toolCalls: 0 };
+  if (!terms.length) return { ...base, hits: [], stage: "index", confident: false, deepAvailable: false, detail: "Type what you remember about the chat." };
+  const scored: ChatSearchHit[] = [];
+  for (const session of mockState.sessions.filter(item => !item.parentSessionId)) {
+    const workspace = mockState.workspaces.find(item => item.id === session.workspaceId);
+    const topic = `${session.title ?? ""} ${session.label} ${workspace?.title ?? ""}`.toLowerCase();
+    const messages = mockState.agentEvents
+      .filter(event => event.sessionId === session.id && typeof event.text === "string")
+      .map(event => String(event.text));
+    const matching = messages.filter(text => terms.some(term => text.toLowerCase().includes(term)));
+    const corpus = `${topic} ${messages.join(" ")}`.toLowerCase();
+    if (!terms.every(term => corpus.includes(term))) continue;
+    const topicMatch = terms.some(term => topic.includes(term));
+    scored.push({
+      sessionId: session.id,
+      title: session.title ?? workspace?.title ?? session.label,
+      harness: session.harness,
+      workspaceId: session.workspaceId ?? undefined,
+      workspaceTitle: workspace?.title,
+      lastActiveAt: session.startedAt ?? now,
+      matchCount: matching.length + (topicMatch ? 1 : 0),
+      snippet: (matching[0] ?? topic).slice(0, 160),
+      score: matching.length + (topicMatch ? 2 : 0),
+      why: topicMatch ? "topic matches" : `${matching.length} messages match`,
+      archived: false,
+      ended: session.endedAt != null,
+    });
+  }
+  scored.sort((left, right) => right.score - left.score);
+  const [first, second] = scored;
+  const confident = scored.length === 1 || (!!first && !!second && first.score / second.score >= 1.5 && first.matchCount >= 2);
+  const deepAvailable = !confident && mockChatSearchSettings.deepSearch !== false;
+  const hits = scored.slice(0, limit);
+  if (!options.deep || !deepAvailable) {
+    return { ...base, hits, stage: "index", confident, deepAvailable, detail: !confident && mockChatSearchSettings.deepSearch === false ? "Deeper search is off in Settings → Composer." : undefined };
+  }
+  await new Promise(resolve => setTimeout(resolve, 600));
+  return {
+    ...base,
+    hits: hits.map(hit => ({ ...hit, why: `closest match for “${query.trim()}”` })),
+    stage: "model",
+    confident,
+    deepAvailable,
+    modelTokens: 1_200,
+    toolCalls: 1,
+  };
+}
+/** Mock windows derived from the mock agent tree, so the Context pane and
+ *  ring have something honest to draw outside Tauri. */
+function mockContextWindows(sessionId: string): ContextWindowsResult {
+  const tree: BridgeState["sessions"] = [];
+  const visit = (id: string, depth: number) => {
+    const session = mockState.sessions.find(candidate => candidate.id === id);
+    if (!session || depth > 8) return;
+    tree.push(session);
+    for (const child of mockState.sessions.filter(candidate => candidate.parentSessionId === id)) visit(child.id, depth + 1);
+  };
+  visit(sessionId, 0);
+  const now = new Date().toISOString();
+  const windows: ContextWindow[] = tree.map(session => {
+    const harness = String(session.harness);
+    const windowTokens = harness === "claude" ? 200_000 : harness === "codex" ? 400_000 : 262_144;
+    const percent = session.contextPercent ?? null;
+    const usedTokens = percent == null ? 0 : Math.round(windowTokens * percent / 100);
+    const claude = harness === "claude";
+    return {
+      sessionId: session.id,
+      label: session.label,
+      kind: session.kind ?? "direct",
+      role: (session.depth ?? 0) > 0 ? "worker" : session.kind === "orchestrator" ? "orchestrator" : "chat",
+      harness,
+      model: session.model ?? null,
+      status: String(session.status),
+      depth: session.depth ?? 0,
+      unavailableReason: percent == null ? "Starts reporting after its first reply." : null,
+      current: percent == null ? null : {
+        usedTokens,
+        windowTokens,
+        percent,
+        state: claude ? "measured" : harness === "opencode" ? "estimated" : "reported",
+        source: claude ? "claude.context_usage" : harness === "codex" ? "codex.token_usage" : "opencode.step_tokens",
+        observedAt: now,
+        turnId: session.activeTurnId ?? null,
+        autoCompactTokens: claude ? Math.round(windowTokens * 0.93) : null,
+        compactionOwner: "harness",
+        segments: claude ? [
+          { name: "Free space", tokens: windowTokens - usedTokens, kind: "free" },
+          { name: "Messages", tokens: Math.round(usedTokens * 0.42), kind: "used" },
+          { name: "Tool results", tokens: Math.round(usedTokens * 0.26), kind: "used" },
+          { name: "System tools", tokens: Math.round(usedTokens * 0.12), kind: "used" },
+          { name: "MCP tools", tokens: Math.round(usedTokens * 0.08), kind: "used" },
+          { name: "Autocompact buffer", tokens: Math.round(windowTokens * 0.07), kind: "buffer" },
+          { name: "Memory files", tokens: Math.round(usedTokens * 0.04), kind: "used" },
+        ] : [],
+        consumers: claude ? [
+          { label: "Bash calls and results", tokens: Math.round(usedTokens * 0.15), detail: null },
+          { label: "Read calls and results", tokens: Math.round(usedTokens * 0.1), detail: null },
+          { label: "MCP · railway", tokens: Math.round(usedTokens * 0.06), detail: "3 of 47 tools loaded · rest on demand" },
+        ] : [],
+        forecast: percent > 10 ? { growthPerTurn: Math.round(windowTokens * 0.03), turnsRemaining: Math.max(1, Math.round((93 - percent) / 3)), samples: 6 } : null,
+      },
+    };
+  });
+  return {
+    sessionId,
+    windows,
+    earlier: tree.length ? [{ harness: "claude", model: "claude-sonnet-5-5", usedTokens: 52_000, windowTokens: 200_000, percent: 26, state: "measured", observedAt: now }] : [],
+    bridge: { stableTokens: 3_200, variableTokens: 1_800, method: "chars/4" },
+  };
+}
 function mockContextBreakdown(sessionId: string): ContextBreakdownResult {
   const reason = "no prompt compilation recorded";
   const inventoryReason = "adapter runtime has not reported context inventory";
@@ -803,7 +976,7 @@ function appendAgent(sessionId: string, kind: string, fields: Partial<AgentEvent
 const mockHealth: Health = {
   ok: true, version: "0.1.0-demo", harnesses: { claude: true, codex: true, cursor: true, opencode: true, shell: true }, database: "demo", snapshot_directory: "demo-snapshots", snapshot_count: 3, snapshot_total_bytes: 12_288, telemetry_database: "demo-telemetry", warnings: [],
   adapters: [
-    { id: "codex", label: "Codex", available: true, authState: "signed_in", version: "mock", capabilities: ["messages", "streaming", "reasoning", "plans", "tools", "commands", "file_changes", "approvals", "usage", "history", "interrupt"], unavailableReason: null, models: [{ id: "gpt-5.6-luna", label: "GPT Luna", tier: "fast", defaultForTier: true, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }, { id: "gpt-5.6-terra", label: "GPT Terra", tier: "standard", defaultForTier: true, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }, { id: "gpt-5.6-sol", label: "GPT Sol", tier: "strong", defaultForTier: true, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }, { id: "gpt-5.3-codex", label: "GPT-5.3 Codex", tier: "standard", defaultForTier: false, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }], defaultModel: "gpt-5.6-luna" },
+    { id: "codex", label: "Codex", available: true, authState: "signed_in", version: "mock", capabilities: ["messages", "streaming", "reasoning", "plans", "tools", "commands", "file_changes", "approvals", "usage", "history", "interrupt"], unavailableReason: null, models: [{ id: "gpt-5.6-luna", label: "GPT Luna", tier: "fast", defaultForTier: true, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }, { id: "gpt-5.6-terra", label: "GPT Terra", tier: "standard", defaultForTier: true, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }, { id: "gpt-6.1-sol", label: "GPT-6.1 Sol", tier: "strong", defaultForTier: true, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }, { id: "gpt-5.6-sol", label: "GPT Sol", tier: "strong", defaultForTier: false, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }, { id: "gpt-5.3-codex", label: "GPT-5.3 Codex", tier: "standard", defaultForTier: false, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] }], defaultModel: "gpt-5.6-luna" },
     { id: "claude", label: "Claude Code", available: true, authState: "signed_in", version: "mock", capabilities: ["messages", "streaming", "reasoning", "tools", "commands", "file_changes", "approvals", "usage", "interrupt", "steering"], unavailableReason: null, models: [{ id: "sonnet", label: "Claude Sonnet", tier: "standard", defaultForTier: true }, { id: "opus", label: "Claude Opus", tier: "strong", defaultForTier: false, supportedEffortLevels: ["low", "medium", "high", "xhigh", "max"] }, { id: "haiku", label: "Claude Haiku", tier: "fast", defaultForTier: true }, { id: "fable", label: "Claude Fable", tier: "strong", defaultForTier: true }], defaultModel: "sonnet" },
     { id: "cursor", label: "Cursor", available: true, authState: "signed_in", version: "mock", capabilities: ["messages", "streaming", "reasoning", "plans", "tools", "commands", "file_changes", "approvals", "usage", "history", "interrupt"], unavailableReason: null, models: [{ id: "auto", label: "Auto", tier: "standard", defaultForTier: true }, { id: "composer-2.5", label: "Composer 2.5", tier: "fast", defaultForTier: true }, { id: "gpt-5.3-codex", label: "Codex 5.3", tier: "standard", defaultForTier: false }, { id: "claude-opus-5-thinking-high", label: "Claude Opus 5 1M Thinking", tier: "strong", defaultForTier: true }], defaultModel: "auto" },
     { id: "opencode", label: "OpenCode", available: true, authState: "signed_in", version: "mock", capabilities: ["messages", "streaming", "reasoning", "plans", "tools", "commands", "file_changes", "approvals", "usage", "history", "interrupt"], unavailableReason: null, models: [{ id: "opencode/deepseek-v4-flash-free", label: "DeepSeek V4 Flash", tier: "fast", defaultForTier: true }, { id: "opencode/north-mini-code-free", label: "North Mini Code", tier: "standard", defaultForTier: true }, { id: "opencode/big-pickle", label: "Big Pickle", tier: "strong", defaultForTier: true }], defaultModel: "opencode/north-mini-code-free" }
@@ -1351,6 +1524,73 @@ export const bridgeApi = {
   browserSkills: (): Promise<BrowserSkill[]> => isTauri() ? call("browser/browser_skills") : Promise.resolve([]),
   configureRemoteBrowser: async (config: RemoteBrowserConfig | null): Promise<void> => { if (isTauri()) return unit(call("browser/configure_remote_browser", { config })); mockBrowserBridge.remoteProvider = config; },
   startRemoteBrowser: (initialUrl: string): Promise<Record<string, unknown>> => isTauri() ? call("browser/start_remote_browser", { initialUrl }) as Promise<Record<string, unknown>> : Promise.resolve({ id: "mock-remote", initialUrl }),
+  // Browser clones. In the desktop app these hit the real runtime through the
+  // `clones/*` wire methods; outside it (dev, tests) they drive the in-memory
+  // fixture above so the surface is exercisable without Tauri.
+  browserCloneState: async (sessionId?: string): Promise<BrowserCloneSnapshot> => {
+    if (isTauri() && sessionId) return cloneSnapshotFromWire(await call("clones/clone_state", { sessionId }));
+    return structuredClone(mockBrowserClone);
+  },
+  requestClone: async (
+    sessionId: string,
+    domain: string,
+    browser: CloneBrowserKind,
+    signInPath: CloneSignInPath,
+  ): Promise<BrowserCloneSnapshot> => {
+    if (isTauri()) return cloneSnapshotFromWire(await call("clones/request_clone", { sessionId, domain, browser, signInPath }));
+    mockBrowserClone = {
+      status: signInPath === "import" ? "acting" : "waiting_for_you",
+      cloneId: "mock-clone-1", domain, signInPath,
+      waitingReason: signInPath === "import" ? null : "Sign in and finish two-factor, then hand the clone back.",
+      expiresAt: new Date(Date.now() + mockCloneSettings.ttlMinutes * 60_000).toISOString(),
+      screenshot: mockCloneFrame(domain), screenshotRedactedRegions: 2, pendingRequest: null, pendingApproval: null,
+    };
+    return structuredClone(mockBrowserClone);
+  },
+  // The person's input into a clone they have taken over (click, scroll, typing,
+  // a login key). Coordinates are a fraction of the viewport.
+  cloneInput: async (sessionId: string, input: CloneInputEvent): Promise<void> => {
+    if (isTauri()) { await call("clones/clone_input", { sessionId, input }); return; }
+  },
+  takeoverBrowserClone: async (sessionId?: string): Promise<void> => {
+    if (isTauri() && sessionId) { await call("clones/takeover_clone", { sessionId }); return; }
+    if (mockBrowserClone.status === "acting" || mockBrowserClone.status === "waiting_for_you") mockBrowserClone = { ...mockBrowserClone, status: "taken_over", waitingReason: null };
+  },
+  handBackBrowserClone: async (sessionId?: string): Promise<void> => {
+    if (isTauri() && sessionId) { await call("clones/hand_back_clone", { sessionId }); return; }
+    if (mockBrowserClone.status === "taken_over") mockBrowserClone = { ...mockBrowserClone, status: "acting" };
+  },
+  destroyBrowserClone: async (sessionId?: string): Promise<void> => {
+    if (isTauri() && sessionId) { await call("clones/destroy_clone", { sessionId }); return; }
+    if (mockBrowserClone.cloneId) mockBrowserClone = noClone("destroyed");
+  },
+  resolveBrowserCloneApproval: async (approvalId: string, allow: boolean): Promise<void> => {
+    if (isTauri()) throw cloneUnavailable();
+    if (mockBrowserClone.pendingApproval?.id === approvalId) mockBrowserClone = { ...mockBrowserClone, pendingApproval: null, status: allow ? "acting" : "waiting_for_you" };
+  },
+  cloneRequests: async (): Promise<import("./protocol/generated/protocol").CloneRequest[]> => isTauri() ? call("clones/clone_requests") : [],
+  readCloneSettings: async (): Promise<CloneSettingsSnapshot> => isTauri() ? call("clones/read_clone_settings") : { connected: true, settings: { ...mockCloneSettings } },
+  writeCloneSettings: async (settings: CloneSettings): Promise<CloneSettingsSnapshot> => {
+    if (isTauri()) return call("clones/write_clone_settings", { settings });
+    mockCloneSettings = { ...settings };
+    return { connected: true, settings: { ...mockCloneSettings } };
+  },
+  // The person answers an agent's clone request. Allow builds the clone and lets
+  // the agent act; deny drops it.
+  resolveCloneRequest: async (sessionId: string, allow: boolean, requestId: string, settings: CloneSettings): Promise<BrowserCloneSnapshot> => {
+    if (isTauri()) return cloneSnapshotFromWire(await call("clones/resolve_clone_request", { sessionId, allow, requestId, signInPath: settings.defaultSignInPath, ttlMinutes: settings.ttlMinutes, agentVision: settings.agentVision ?? true }));
+    if (allow) {
+      const domain = mockBrowserClone.pendingRequest ?? mockBrowserClone.domain ?? "example.com";
+      mockBrowserClone = {
+        status: settings.defaultSignInPath === "import" ? "acting" : "waiting_for_you", cloneId: "mock-clone-1", domain, signInPath: settings.defaultSignInPath, pendingRequest: null,
+        waitingReason: null, expiresAt: new Date(Date.now() + settings.ttlMinutes * 60_000).toISOString(),
+        screenshot: mockCloneFrame(domain), screenshotRedactedRegions: 0, pendingApproval: null, agentVision: settings.agentVision ?? true,
+      };
+    } else {
+      mockBrowserClone = noClone();
+    }
+    return structuredClone(mockBrowserClone);
+  },
   skillCatalog: (): Promise<SkillCatalog> => isTauri() ? call("skills/skill_catalog") as Promise<SkillCatalog> : Promise.resolve(structuredClone(mockSkills)),
   skillSuggestions: (query: string, provider: SkillProvider): Promise<CapabilitySuggestion[]> => isTauri() ? call("skills/skill_suggestions", { query, provider }) as Promise<CapabilitySuggestion[]> : Promise.resolve(mockSkills.community.filter(skill => skill.providerStates.some(state => state.provider === provider && state.installed) && `${skill.name} ${skill.description} ${skill.categories.join(" ")}`.toLowerCase().includes(query.toLowerCase())).map(skill => ({ id: skill.id, name: skill.name, command: skill.slug, relevance: `Matches “${query}”`, source: skill.source, providers: [provider], permissions: skill.permissions, risk: skill.risk, installed: true }))),
   previewSkillChange: async (skillId: string, action: SkillAction, targets: SkillProvider[]): Promise<SkillPreview> => {
@@ -1766,6 +2006,7 @@ export const bridgeApi = {
   contextBreakdown: (sessionId: string): Promise<ContextBreakdownResult> => isTauri() ? call("sessions/get_context_breakdown", { sessionId }) : Promise.resolve(mockContextBreakdown(sessionId)),
   // Same change-token contract as sessionForestDigest, scoped to breakdown
   // inputs: compilations, config revisions, adapter observations, branch.
+  contextWindows: (sessionId: string): Promise<ContextWindowsResult> => isTauri() ? call("sessions/get_context_windows", { sessionId }) : Promise.resolve(mockContextWindows(sessionId)),
   contextBreakdownDigest: (sessionId: string): Promise<string> => isTauri() ? call("sessions/get_context_breakdown_digest", { sessionId }).then(result => result.digest) : Promise.resolve(mockContextBreakdown(sessionId).digest),
   /** Durable backfill of one session's event log — any session id, including a
    * worker child's. Cursor semantics: pass the last sequence already held. */
@@ -1930,6 +2171,16 @@ export const bridgeApi = {
   saveAttributionSettings: async (settings: AttributionSettings): Promise<AttributionSettings> => {
     if (isTauri()) return call("config/save_attribution_settings", { settings });
     return structuredClone(settings);
+  },
+  chatSearchSettings: async (): Promise<ChatSearchSettings> => {
+    if (isTauri()) return call("config/get_chat_search_settings");
+    return structuredClone(mockChatSearchSettings);
+  },
+  saveChatSearchSettings: async (settings: ChatSearchSettings): Promise<ChatSearchSettings> => {
+    if (isTauri()) return call("config/save_chat_search_settings", { settings });
+    const model = settings.model?.trim() || null;
+    mockChatSearchSettings = { deepSearch: settings.deepSearch !== false, model };
+    return structuredClone(mockChatSearchSettings);
   },
   unarchiveChat: async (sessionId: string): Promise<void> => {
     if (isTauri()) { await call("sessions/unarchive_chat", { sessionId }); return; }
@@ -2144,6 +2395,21 @@ export const bridgeApi = {
     const size = limit ?? 20;
     const start = offset ?? 0;
     return { sessionId, query, hits: hits.slice(start, start + size), offset: start, hasMore: hits.length > start + size };
+  },
+  /**
+   * Find a chat across every chat from what the user remembers. Index only
+   * unless `deep` is set; a deep call runs the model stage only when the
+   * index is unsure, and can take seconds.
+   */
+  searchChats: async (query: string, options: { limit?: number; deep?: boolean } = {}): Promise<SearchChatsResult> => {
+    if (isTauri()) {
+      return call("sessions/search_chats", {
+        query,
+        ...(options.limit != null ? { limit: options.limit } : {}),
+        ...(options.deep ? { deep: true } : {}),
+      });
+    }
+    return mockSearchChats(query, options);
   },
   /**
    * Write one session's durable record out as JSONL.
@@ -2451,10 +2717,10 @@ export const bridgeApi = {
     session.status = "ready"; session.activeTurnId = null; emitState();
   },
   // The active-turn input contract. Unlike sendTurn this is safe to call while
-  // the agent is working: the backend decides between starting a turn, steering
-  // the live one, and durably queueing, and says which it did. Attachments ride
-  // beside the text; a provider that cannot take them refuses explicitly, which
-  // is how the composer surfaces "not supported" instead of dropping bytes.
+  // the agent is working: a chat's running turn is stopped and the message runs
+  // as a new one, and the result says which happened. Attachments ride beside
+  // the text; a provider that cannot take them refuses explicitly, which is how
+  // the composer surfaces "not supported" instead of dropping bytes.
   submitInput: async (sessionId: string, text: string, attachments?: readonly ComposerAttachment[]): Promise<SubmitInputResult> => {
     const images: TurnImage[] = (attachments ?? []).map(attachment => ({
       mediaType: attachment.mediaType,
@@ -2463,10 +2729,11 @@ export const bridgeApi = {
     if (isTauri()) return call("sessions/submit_input", { sessionId, text, attachments: images.length > 0 ? images : undefined });
     const session = mockState.sessions.find(item => item.id === sessionId); if (!session) throw new Error("Structured adapter session is not running");
     if (session.activeTurnId) {
-      const steering = mockHealth.adapters.some(adapter => adapter.id === session.harness && adapter.capabilities.includes("steering"));
-      appendAgent(sessionId, "message.completed", { itemId: `user-${nextEventId}`, role: "user", status: "completed", text, data: { delivery: steering ? "steered" : "queued", ...(images.length > 0 ? { attachments: images.map(image => ({ mediaType: image.mediaType, dataUri: `data:${image.mediaType};base64,${image.base64Data}` })) } : {}) } });
+      // The mock has no turn to stop; it records the steer the way the real
+      // backend persists it and leaves the running turn to finish.
+      appendAgent(sessionId, "message.completed", { itemId: `user-${nextEventId}`, role: "user", status: "completed", text, data: { delivery: "steered", ...(images.length > 0 ? { attachments: images.map(image => ({ mediaType: image.mediaType, dataUri: `data:${image.mediaType};base64,${image.base64Data}` })) } : {}) } });
       emitState();
-      return { disposition: steering ? "steeredActiveTurn" : "queuedForPhaseBoundary", queuedInputId: steering ? undefined : `mock-queue-${nextEventId}`, interceptions: [] };
+      return { disposition: "steeredActiveTurn", interceptions: [] };
     }
     await bridgeApi.sendTurn(sessionId, text);
     return { disposition: "startedNewTurn", interceptions: [] };
